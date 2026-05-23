@@ -386,7 +386,13 @@ let clipboard = null; // { action: 'copy'|'cut', paths: [...], names: [...] }
     fetch(API_ROOT + '/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auto:'1'})})
       .then(function(r){return r.json()})
       .then(function(d){
-        if(d.ok){fmToken=d.token;document.getElementById('loginScreen').style.display='none';document.getElementById('app').style.display='flex';loadDir(currentDir);}
+        if(d.ok){
+          fmToken=d.token;
+          var ls=document.getElementById('loginScreen');
+          if(ls)ls.style.display='none';
+          document.getElementById('app').style.display='flex';
+          loadDir(currentDir);
+        }
       });
   }
 })();
