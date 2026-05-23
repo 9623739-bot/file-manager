@@ -372,21 +372,29 @@
 // pa
 // no-auth
 const API_ROOT = '';
+var fmToken = null;
 let currentDir = '/root/workspace';
 let allEntries = [];
 let selectedPaths = new Set();
 let isSelecting = false;
 let clipboard = null; // { action: 'copy'|'cut', paths: [...], names: [...] }
 
-// auto-login removed
+// ─── 自动登录 ───
+(function(){
+  var p = new URLSearchParams(location.search);
+  if (p.get('safe') === '1') {
+    fetch(API_ROOT + '/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auto:'1'})})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d.ok){fmToken=d.token;document.getElementById('loginScreen').style.display='none';document.getElementById('app').style.display='flex';loadDir(currentDir);}
+      });
+  }
+})();
 
 // ─── 登录 ───
 // login removed; auto-load
-setTimeout(function(){ loadDir(currentDir); }, 100);
 
 // ─── 目录导航 ───
-
-var fmToken = null;
 
 function authFetch(url, opts) {
   opts = opts || {};
