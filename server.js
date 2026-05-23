@@ -83,6 +83,30 @@ const upload = multer({ storage, limits: { fileSize: 1024 * 1024 * 1024 } });
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
+// ─── 服务端认证 ───
+const FM_PASSWORD = 'hermes2024';
+const validTokens = new Set();
+
+function authMiddleware(req, res, next) {
+  if (!req.path.startsWith('/api/')) return next();
+  if (req.path === '/api/auth/login') return next();
+  const token = req.headers['x-fm-token'] || req.query.fm_token;
+  if (token && validTokens.has(token)) return next();
+  res.status(401).json({ error: '\u672a\u767b\u5f55' });
+}
+app.use(authMiddleware);
+
+app.post('/api/auth/login', (req, res) => {
+  const { password } = req.body;
+  if (password === FM_PASSWORD) {
+    const t = Date.now().toString(36) + Math.random().toString(36).slice(2);
+    validTokens.add(t);
+    setTimeout(() => validTokens.delete(t), 30 * 60 * 1000);
+    return res.json({ ok: true, token: t });
+  }
+  res.status(403).json({ error: '\u5bc6\u7801\u9519\u8bef' });
+});
+
 // ─── API: 列出目录 ───
 app.get('/api/list', (req, res) => {
   try {

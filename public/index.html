@@ -42,7 +42,7 @@
 
   /* ── 主界面 ── */
   #app {
-    display: none;
+    display: flex;
     height: 100vh;
     flex-direction: column;
   }
@@ -243,18 +243,8 @@
 </head>
 <body>
 
-<!-- ===== 登录 ===== -->
-<div id="loginScreen">
-  <div class="login-box">
-    <h1>🔒 文件管理器</h1>
-    <input type="password" id="loginPw" placeholder="输入密码" autofocus>
-    <button class="btn" id="loginBtn">登录</button>
-    <div class="err" id="loginErr">密码错误</div>
-  </div>
-</div>
-
-<!-- ===== 主界面 ===== -->
-<div id="app">
+<!-- ===== app ===== -->
+<div id="app" style="display:flex">
 
   <!-- 工具栏 -->
   <div class="toolbar">
@@ -380,7 +370,7 @@
 
 <script>
 // pa
-var PASSWORD=String.fromCharCode(104,101,114,109,101,115,50,48,50,52);
+// no-auth
 const API_ROOT = '';
 let currentDir = '/root/workspace';
 let allEntries = [];
@@ -388,77 +378,25 @@ let selectedPaths = new Set();
 let isSelecting = false;
 let clipboard = null; // { action: 'copy'|'cut', paths: [...], names: [...] }
 
-// ─── 拖拽上传初始化 ───
-document.addEventListener('DOMContentLoaded', () => {
-  const fileArea = document.getElementById('fileArea');
-  fileArea.addEventListener('dragover', e => {
-    e.preventDefault();
-    e.stopPropagation();
-    fileArea.style.border = '2px dashed #58a6ff';
-    fileArea.style.background = 'rgba(88,166,255,0.03)';
-  });
-  fileArea.addEventListener('dragleave', e => {
-    e.preventDefault();
-    e.stopPropagation();
-    fileArea.style.border = 'none';
-    fileArea.style.background = 'none';
-  });
-  fileArea.addEventListener('drop', e => {
-    e.preventDefault();
-    e.stopPropagation();
-    fileArea.style.border = 'none';
-    fileArea.style.background = 'none';
-    const items = e.dataTransfer.items;
-    if (!items || items.length === 0) return;
-    const allFiles = [];
-    const traverse = (entry, path = '') => {
-      if (entry.isFile) {
-        entry.file(f => { f._relPath = path ? path + '/' + f.name : f.name; allFiles.push(f); });
-      } else if (entry.isDirectory) {
-        const reader = entry.createReader();
-        reader.readEntries(entries => {
-          for (const e of entries) traverse(e, path ? path + '/' + entry.name : entry.name);
-        });
-      }
-    };
-    for (let i = 0; i < items.length; i++) {
-      const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
-      if (entry) traverse(entry);
-    }
-    setTimeout(() => { if (allFiles.length > 0) uploadFiles(allFiles); }, 600);
-  });
-});
-
-// ─── 自动登录（参数 safe=1，避开明文密码） ───
-(function(){
-  const params = new URLSearchParams(location.search);
-  if (params.get('safe') === '1') {
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('app').style.display = 'flex';
-    loadDir(currentDir);
-  }
-})();
+// auto-login removed
 
 // ─── 登录 ───
-document.getElementById('loginBtn').addEventListener('click', login);
-document.getElementById('loginPw').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
-function login() {
-  if (document.getElementById('loginPw').value === PASSWORD) {
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('app').style.display = 'flex';
-    loadDir(currentDir);
-  } else {
-    document.getElementById('loginErr').style.display = 'block';
-    setTimeout(() => document.getElementById('loginErr').style.display = 'none', 2000);
-  }
-}
+// login removed; auto-load
+setTimeout(function(){ loadDir(currentDir); }, 100);
 
 // ─── 目录导航 ───
 async function loadDir(dir) {
   currentDir = dir;
   document.getElementById('pathInput').value = dir;
   try {
-    const resp = await fetch(`${API_ROOT}/api/list?dir=${encodeURIComponent(dir)}`);
+function authFetch(url, opts) {
+  opts = opts || {};
+  opts.headers = opts.headers || {};
+  opts.headers['x-fm-token'] = fmToken;
+  if (opts.method === 'GET' && url.indexOf('?') > 0) url += '&fm_token=' + encodeURIComponent(fmToken);
+  return fetch(url, opts);
+}
+    const resp = await authFetch(API_ROOT + '/api/list?dir=' + encodeURIComponent(dir));
     const data = await resp.json();
     if (data.error) { toast(data.error, true); return; }
     allEntries = data.entries || [];
@@ -674,7 +612,7 @@ async function pasteFromClipboard() {
   if (!clipboard || clipboard.paths.length === 0) { toast('剪贴板为空', true); return; }
   const api = clipboard.action === 'copy' ? '/api/copy' : '/api/move';
   try {
-    const resp = await fetch(API_ROOT + api, {
+    const resp = await authFetch(API_ROOT + api, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ sources: clipboard.paths, targetDir: currentDir })
     });
@@ -936,7 +874,7 @@ function openEditor(name) {
   status.textContent = '⏳ 加载中...';
   info.textContent = '';
 
-  fetch(API_ROOT + '/api/read?path=' + encodeURIComponent(editingFilePath))
+  authFetch(API_ROOT + '/api/read?path=' + encodeURIComponent(editingFilePath))
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.error) { toast(data.error, true); closeEditor(); return; }
@@ -963,7 +901,7 @@ async function saveEditor() {
   btn.textContent = '⏳ 保存中...';
   var status = document.getElementById('editorStatus');
   try {
-    var resp = await fetch(API_ROOT + '/api/save', {
+    var resp = await authFetch(API_ROOT + '/api/save', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ path: editingFilePath, content: document.getElementById('editorTextarea').value })
     });
@@ -977,7 +915,7 @@ async function saveEditor() {
 
 // ─── 回收站 ───
 function showTrash() {
-  fetch(API_ROOT + '/api/trash/list')
+  authFetch(API_ROOT + '/api/trash/list')
     .then(function(r){return r.json()})
     .then(function(data){
       if(data.error){toast(data.error,true);return;}
@@ -1010,7 +948,7 @@ function showTrash() {
 }
 
 function trashRestore(id) {
-  fetch(API_ROOT + '/api/trash/restore', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
+  authFetch(API_ROOT + '/api/trash/restore', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
     .then(function(r){return r.json()})
     .then(function(d){
       if(d.error){toast(d.error,true);return;}
@@ -1022,7 +960,7 @@ function trashRestore(id) {
 
 function trashDelete(id) {
   if(!confirm('确定彻底删除？无法撤销'))return;
-  fetch(API_ROOT + '/api/trash/empty', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[id]})})
+  authFetch(API_ROOT + '/api/trash/empty', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[id]})})
     .then(function(r){return r.json()})
     .then(function(d){
       if(d.error){toast(d.error,true);return;}
@@ -1034,7 +972,7 @@ function trashDelete(id) {
 
 function emptyTrash() {
   if(!confirm('确定清空回收站？无法撤销'))return;
-  fetch(API_ROOT + '/api/trash/empty', {method:'POST',headers:{'Content-Type':'application/json'}})
+  authFetch(API_ROOT + '/api/trash/empty', {method:'POST',headers:{'Content-Type':'application/json'}})
     .then(function(r){return r.json()})
     .then(function(d){
       if(d.error){toast(d.error,true);return;}
@@ -1048,7 +986,7 @@ function emptyTrash() {
 async function extractArchive(name) {
   const fullPath = currentDir + '/' + name;
   try {
-    const resp = await fetch(API_ROOT + '/api/extract', {
+    const resp = await authFetch(API_ROOT + '/api/extract', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ path: fullPath })
     });
@@ -1096,7 +1034,7 @@ function refreshTrash() {
   var list = document.getElementById('trashList');
   var info = document.getElementById('trashInfo');
   list.innerHTML = '<div style="text-align:center;padding:40px;color:#8b949e">⏳ 加载中...</div>';
-  fetch(API_ROOT + '/api/trash/list').then(function(r) { return r.json(); }).then(function(data) {
+  authFetch(API_ROOT + '/api/trash/list').then(function(r) { return r.json(); }).then(function(data) {
     if (data.error) { list.innerHTML = '<div style="text-align:center;padding:40px;color:#f85149">' + data.error + '</div>'; return; }
     var items = data.items || [];
     info.textContent = '(' + items.length + ' 项)';
@@ -1129,7 +1067,7 @@ function refreshTrash() {
 }
 function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 function restoreTrash(id) {
-  fetch(API_ROOT + '/api/trash/restore', {
+  authFetch(API_ROOT + '/api/trash/restore', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ id: id })
   }).then(function(r) { return r.json(); }).then(function(data) {
@@ -1140,7 +1078,7 @@ function restoreTrash(id) {
 }
 function deleteTrash(id) {
   if (!confirm('确定永久删除此文件？')) return;
-  fetch(API_ROOT + '/api/trash/empty', {
+  authFetch(API_ROOT + '/api/trash/empty', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ ids: [id] })
   }).then(function(r) { return r.json(); }).then(function(data) {
@@ -1151,7 +1089,7 @@ function deleteTrash(id) {
 }
 function emptyTrash() {
   if (!confirm('确定清空回收站？所有文件将被永久删除！')) return;
-  fetch(API_ROOT + '/api/trash/empty', {
+  authFetch(API_ROOT + '/api/trash/empty', {
     method: 'POST', headers: {'Content-Type': 'application/json'}
   }).then(function(r) { return r.json(); }).then(function(data) {
     if (data.error) { toast(data.error, true); return; }
