@@ -21,6 +21,43 @@ const ALLOWED_PREFIXES = [
   '/usr/local',
 ];
 const DEFAULT_ROOT = '/root/workspace';
+const TRASH_DIR = path.join(DEFAULT_ROOT, '.trash');
+const TRASH_INDEX = path.join(TRASH_DIR, 'index.json');
+const RETENTION_DAYS = 30;
+
+// ─── 回收站 ───
+function trashInit() {
+  fs.mkdirSync(path.join(TRASH_DIR, 'items'), { recursive: true });
+  if (!fs.existsSync(TRASH_INDEX)) fs.writeFileSync(TRASH_INDEX, '{"items":[]}', 'utf-8');
+}
+function trashRead() {
+  try { return JSON.parse(fs.readFileSync(TRASH_INDEX, 'utf-8')); } catch(e) { return { items: [] }; }
+}
+function trashWrite(data) {
+  fs.writeFileSync(TRASH_INDEX, JSON.stringify(data, null, 2), 'utf-8');
+}
+function trashCleanup() {
+  const data = trashRead();
+  const now = Date.now();
+  const cutoff = now - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const kept = [];
+  let cleaned = 0;
+  for (const item of data.items) {
+    if (item.deletedAt < cutoff) {
+      const itemPath = path.join(TRASH_DIR, 'items', item.id);
+      if (fs.existsSync(itemPath)) fs.rmSync(itemPath, { recursive: true, force: true });
+      cleaned++;
+    } else {
+      kept.push(item);
+    }
+  }
+  if (cleaned > 0) { data.items = kept; trashWrite(data); }
+  return cleaned;
+}
+
+trashInit();
+trashCleanup();
+setInterval(trashCleanup, 6 * 60 * 60 * 1000); // 每 6 小时清理一次
 
 function isPathAllowed(target) {
   const resolved = path.resolve(target);
@@ -58,7 +95,9 @@ app.get('/api/list', (req, res) => {
     if (!fs.existsSync(resolved)) {
       return res.json({ dir: resolved, entries: [] });
     }
-    const entries = fs.readdirSync(resolved, { withFileTypes: true }).map(d => ({
+    const entries = fs.readdirSync(resolved, { withFileTypes: true })
+      .filter(d => d.name !== '.trash')
+      .map(d => ({
       name: d.name,
       isDir: d.isDirectory(),
       size: d.isDirectory() ? null : fs.statSync(path.join(resolved, d.name)).size,
@@ -175,19 +214,26 @@ app.get('/api/download-batch', (req, res) => {
   }
 });
 
-// ─── API: 删除 ───
+// ─── API: 删除（移入回收站） ───
 app.post('/api/delete', (req, res) => {
   try {
     const target = req.body.path;
     if (!target) return res.status(403).json({ error: '禁止访问' });
     const resolved = path.resolve(target);
     if (!isPathAllowed(resolved)) return res.status(403).json({ error: '禁止访问' });
-    if (fs.statSync(target).isDirectory()) {
-      fs.rmSync(target, { recursive: true, force: true });
-    } else {
-      fs.unlinkSync(target);
-    }
-    res.json({ ok: true });
+    if (!fs.existsSync(resolved)) return res.status(404).json({ error: '文件不存在' });
+    const isDir = fs.statSync(resolved).isDirectory();
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const trashItemPath = path.join(TRASH_DIR, 'items', id);
+    fs.mkdirSync(path.dirname(trashItemPath), { recursive: true });
+    fs.renameSync(resolved, trashItemPath);
+    const data = trashRead();
+    data.items.push({
+      id, name: path.basename(target), origPath: resolved,
+      isDir, deletedAt: Date.now(), size: 0
+    });
+    trashWrite(data);
+    res.json({ ok: true, trash: id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -379,6 +425,71 @@ app.post('/api/save', (req, res) => {
     if (stat.isDirectory()) return res.status(400).json({ error: '不能写入目录' });
     fs.writeFileSync(resolved, content, 'utf-8');
     res.json({ ok: true, path: resolved });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── API: 回收站列表 ───
+app.get('/api/trash/list', (req, res) => {
+  try {
+    trashCleanup();
+    const data = trashRead();
+    const now = Date.now();
+    const items = data.items.map(item => ({
+      ...item,
+      remainingDays: Math.max(0, Math.floor((RETENTION_DAYS * 86400000 - (now - item.deletedAt)) / 86400000))
+    }));
+    res.json({ ok: true, items });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── API: 回收站清空 ───
+app.post('/api/trash/empty', (req, res) => {
+  try {
+    const data = trashRead();
+    const ids = req.body.ids;
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      for (const id of ids) {
+        const p = path.join(TRASH_DIR, 'items', id);
+        if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+      }
+      data.items = data.items.filter(item => !ids.includes(item.id));
+    } else {
+      for (const item of data.items) {
+        const p = path.join(TRASH_DIR, 'items', item.id);
+        if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+      }
+      data.items = [];
+    }
+    trashWrite(data);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── API: 回收站还原 ───
+app.post('/api/trash/restore', (req, res) => {
+  try {
+    const id = req.body.id;
+    if (!id) return res.status(400).json({ error: '缺少 id' });
+    const data = trashRead();
+    const idx = data.items.findIndex(item => item.id === id);
+    if (idx === -1) return res.status(404).json({ error: '回收站项目不存在' });
+    const item = data.items[idx];
+    const trashItemPath = path.join(TRASH_DIR, 'items', id);
+    if (!fs.existsSync(trashItemPath)) {
+      data.items.splice(idx, 1); trashWrite(data);
+      return res.status(404).json({ error: '文件已丢失' });
+    }
+    fs.mkdirSync(path.dirname(item.origPath), { recursive: true });
+    fs.renameSync(trashItemPath, item.origPath);
+    data.items.splice(idx, 1);
+    trashWrite(data);
+    res.json({ ok: true, path: item.origPath });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

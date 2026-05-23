@@ -200,6 +200,12 @@
   /* 多选框 */
   .sel-cb { width: 20px; text-align: center; flex-shrink: 0; font-size: 14px; margin-right: 4px; }
 
+  .restore-btn { color: #58a6ff; cursor: pointer; }
+  .restore-btn:hover { color: #79c0ff; text-decoration: underline; }
+  .trash-count { font-size: 11px; color: #8b949e; margin-left: 4px; }
+  .trash-header { display: flex; align-items: center; gap: 8px; padding: 5px 16px; background: #0d1117; border-bottom: 1px solid #21262d; font-size: 12px; flex-shrink: 0; }
+  .trash-header span { color: #8b949e; }
+
   /* 编辑器 */
   .editor-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,0.7);
@@ -267,6 +273,8 @@
     <button class="btn" onclick="downloadCurrentDir()">⬇ 下载此目录</button>
     <button class="btn" id="selectBtn" onclick="toggleSelectMode()">☐ 选择</button>
     <button class="btn" id="selectAllBtn" onclick="selectAll()" style="display:none">☑ 全选</button>
+    <button class="btn" onclick="showTrash()">🗑 回收站</button>
+    <button class="btn" onclick="showTrash()">🗑 回收站</button>
   </div>
 
   <!-- 上传进度 -->
@@ -307,7 +315,7 @@
 
   <!-- 文件列表 -->
   <div class="file-area" id="fileArea">
-    <div class="file-header">
+    <div class="file-header" id="fileHeader">
       <span class="col-name" style="padding-left:4px">名称</span>
       <span class="col-size">大小</span>
       <span class="col-date">修改时间</span>
@@ -344,6 +352,26 @@
   <div class="editor-footer">
     <span class="status" id="editorStatus">就绪</span>
     <span id="editorInfo"></span>
+  </div>
+</div>
+
+<!-- ===== 回收站 ===== -->
+<div class="editor-overlay hidden" id="trashOverlay">
+  <div class="editor-header">
+    <span style="font-size:16px">🗑</span>
+    <span class="path">回收站</span>
+    <span style="font-size:11px;color:#8b949e" id="trashInfo"></span>
+    <button class="btn btn-sm" onclick="closeTrash()">✕ 关闭</button>
+    <button class="btn btn-sm btn-danger" onclick="emptyTrash()">🗑 清空回收站</button>
+    <button class="btn btn-sm" onclick="refreshTrash()">🔄 刷新</button>
+  </div>
+  <div class="editor-body">
+    <div id="trashList" style="width:100%;overflow-y:auto;padding:8px 16px;background:#0d1117">
+      <div style="text-align:center;padding:40px;color:#8b949e" id="trashLoading">⏳ 加载中...</div>
+    </div>
+  </div>
+  <div class="editor-footer">
+    <span class="status">文件删除后进入回收站，30天后自动彻底删除</span>
   </div>
 </div>
 
@@ -947,6 +975,75 @@ async function saveEditor() {
   finally { btn.disabled = false; btn.textContent = '💾 保存'; }
 }
 
+// ─── 回收站 ───
+function showTrash() {
+  fetch(API_ROOT + '/api/trash/list')
+    .then(function(r){return r.json()})
+    .then(function(data){
+      if(data.error){toast(data.error,true);return;}
+      var el=document.getElementById('fileList');
+      var header=document.getElementById('fileHeader');
+      if(data.items.length===0){
+        el.innerHTML='<div class="empty">🗑 回收站是空的</div>';
+        header.innerHTML='<span class="col-name" style="padding-left:4px">回收站</span>';
+        return;
+      }
+      header.innerHTML='<span class="col-name" style="padding-left:4px">回收站 ('+data.items.length+' 项)</span>';
+      el.innerHTML=data.items.map(function(item){
+        var date=new Date(item.deletedAt).toLocaleString('zh-CN');
+        var icon=item.isDir?'📁':'📄';
+        return '<div class="file-item" style="cursor:default">'+
+          '<span class="icon">'+icon+'</span>'+
+          '<span class="col-name">'+item.name+' <span style="color:#8b949e;font-size:11px">('+item.origPath+')</span></span>'+
+          '<span style="color:#8b949e;font-size:11px;margin-right:12px">'+date+'</span>'+
+          '<span style="color:#f0883e;font-size:11px;margin-right:12px">剩 '+item.remainingDays+' 天</span>'+
+          '<span class="row-actions">'+
+            '<button class="btn btn-sm restore-btn" onclick="event.stopPropagation();trashRestore(''+item.id+'')">↩ 还原</button>'+
+            '<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();trashDelete(''+item.id+'')">🗑 彻底删除</button>'+
+          '</span></div>';
+      }).join('');
+      // Update breadcrumb to show trash
+      var bc=document.getElementById('breadcrumb');
+      bc.innerHTML='<a onclick="showTrash()">🗑 回收站</a>';
+    })
+    .catch(function(e){toast('加载回收站失败: '+e.message,true);});
+}
+
+function trashRestore(id) {
+  fetch(API_ROOT + '/api/trash/restore', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d.error){toast(d.error,true);return;}
+      toast('✅ 已还原');
+      showTrash();
+    })
+    .catch(function(e){toast('还原失败: '+e.message,true);});
+}
+
+function trashDelete(id) {
+  if(!confirm('确定彻底删除？无法撤销'))return;
+  fetch(API_ROOT + '/api/trash/empty', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[id]})})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d.error){toast(d.error,true);return;}
+      toast('已彻底删除');
+      showTrash();
+    })
+    .catch(function(e){toast('删除失败: '+e.message,true);});
+}
+
+function emptyTrash() {
+  if(!confirm('确定清空回收站？无法撤销'))return;
+  fetch(API_ROOT + '/api/trash/empty', {method:'POST',headers:{'Content-Type':'application/json'}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d.error){toast(d.error,true);return;}
+      toast('回收站已清空');
+      showTrash();
+    })
+    .catch(function(e){toast('清空失败: '+e.message,true);});
+}
+
 // ─── 解压 ───
 async function extractArchive(name) {
   const fullPath = currentDir + '/' + name;
@@ -986,6 +1083,82 @@ function fallbackCopy(text) {
   document.body.removeChild(ta);
 }
 
+
+// ─── 回收站 ───
+function showTrash() {
+  document.getElementById('trashOverlay').classList.remove('hidden');
+  refreshTrash();
+}
+function closeTrash() {
+  document.getElementById('trashOverlay').classList.add('hidden');
+}
+function refreshTrash() {
+  var list = document.getElementById('trashList');
+  var info = document.getElementById('trashInfo');
+  list.innerHTML = '<div style="text-align:center;padding:40px;color:#8b949e">⏳ 加载中...</div>';
+  fetch(API_ROOT + '/api/trash/list').then(function(r) { return r.json(); }).then(function(data) {
+    if (data.error) { list.innerHTML = '<div style="text-align:center;padding:40px;color:#f85149">' + data.error + '</div>'; return; }
+    var items = data.items || [];
+    info.textContent = '(' + items.length + ' 项)';
+    if (items.length === 0) {
+      list.innerHTML = '<div style="text-align:center;padding:40px;color:#8b949e">🗑 回收站为空</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var icon = item.isDir ? '📁' : '📄';
+      var date = new Date(item.deletedAt).toLocaleString('zh-CN');
+      var daysText = item.remainingDays > 0 ? item.remainingDays + ' 天后删除' : '即将删除';
+      html += '<div class="file-item" style="cursor:default">'
+        + '<span class="icon">' + icon + '</span>'
+        + '<span class="col-name" style="flex:1">' + esc(item.name) + '</span>'
+        + '<span style="font-size:11px;color:#8b949e;margin-right:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(item.origPath) + '</span>'
+        + '<span style="font-size:11px;color:#8b949e;margin-right:12px;white-space:nowrap">' + date + '</span>'
+        + '<span style="font-size:11px;color:#8b949e;margin-right:12px;white-space:nowrap">' + daysText + '</span>'
+        + '<span class="row-actions" style="display:inline-flex">'
+        + '<button class="btn btn-sm" data-id="' + item.id + '" onclick="restoreTrash(this.dataset.id)">♻️ 还原</button>'
+        + '<button class="btn btn-sm btn-danger" data-id="' + item.id + '" onclick="deleteTrash(this.dataset.id)">🗑 删除</button>'
+        + '</span>'
+        + '</div>';
+    }
+    list.innerHTML = html;
+  }).catch(function(e) {
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:#f85149">加载失败: ' + e.message + '</div>';
+  });
+}
+function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function restoreTrash(id) {
+  fetch(API_ROOT + '/api/trash/restore', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ id: id })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.error) { toast(data.error, true); return; }
+    toast('♻️ 已还原');
+    refreshTrash();
+  }).catch(function(e) { toast('还原失败: ' + e.message, true); });
+}
+function deleteTrash(id) {
+  if (!confirm('确定永久删除此文件？')) return;
+  fetch(API_ROOT + '/api/trash/empty', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ ids: [id] })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.error) { toast(data.error, true); return; }
+    toast('🗑 已永久删除');
+    refreshTrash();
+  }).catch(function(e) { toast('删除失败: ' + e.message, true); });
+}
+function emptyTrash() {
+  if (!confirm('确定清空回收站？所有文件将被永久删除！')) return;
+  fetch(API_ROOT + '/api/trash/empty', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.error) { toast(data.error, true); return; }
+    toast('🗑 回收站已清空');
+    refreshTrash();
+  }).catch(function(e) { toast('清空失败: ' + e.message, true); });
+}
 // ─── Toast ───
 function toast(msg, isError = false) {
   const el = document.getElementById('toast');
