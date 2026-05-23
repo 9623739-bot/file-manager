@@ -465,7 +465,8 @@ function renderFiles() {
     const sel = selectedPaths.has(e.name) ? 'selected' : '';
     const selIcon = isSelecting ? (selectedPaths.has(e.name) ? '☑' : '☐') : '';
     return `<div class="file-item ${sel}" data-name="${escapeHtml(e.name)}" data-isdir="${e.isDir}" onclick="handleClick(event, '${escapeHtml(e.name)}', ${e.isDir})" oncontextmenu="handleContext(event, '${escapeHtml(e.name)}', ${e.isDir})">
-      <span class="icon">${(isSelecting ? selIcon + ' ' : '') + icon}</span>
+      ${isSelecting ? `<span class="sel-cb">${selIcon}</span>` : ''}
+      <span class="icon">${icon}</span>
       <span class="col-name">${escapeHtml(e.name)}</span>
       <span class="col-size">${sizeStr}</span>
       <span class="col-date">${dateStr}</span>
