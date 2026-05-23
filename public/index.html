@@ -647,14 +647,14 @@ function downloadSelected() {
   if (selectedPaths.size === 1) { downloadFile([...selectedPaths][0]); clearSelection(); return; }
   const names = [...selectedPaths];
   const params = names.map(n => 'path=' + encodeURIComponent(currentDir + '/' + n)).join('&');
-  window.open(`${API_ROOT}/api/download-batch?dir=${encodeURIComponent(currentDir)}&${params}`, '_blank');
+  window.open(API_ROOT + '/api/download-batch?dir=' + encodeURIComponent(currentDir) + '&' + params + '&fm_token=' + encodeURIComponent(fmToken), '_blank');
   clearSelection();
 }
 function deleteSelected() {
   if (selectedPaths.size === 0) return;
   if (!confirm(`确定删除 ${selectedPaths.size} 项？`)) return;
   Promise.all([...selectedPaths].map(name =>
-    fetch(`${API_ROOT}/api/delete`, {
+    authFetch(API_ROOT + '/api/delete', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ path: currentDir + '/' + name })
     })
@@ -836,7 +836,7 @@ async function createFolder() {
   const name = document.getElementById('newFolderName').value.trim();
   if (!name) return;
   try {
-    const resp = await fetch(`${API_ROOT}/api/mkdir`, {
+    const resp = await authFetch(API_ROOT + '/api/mkdir', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ parent: currentDir, name })
     });
@@ -852,7 +852,7 @@ async function deleteItem(name, isDir) {
   const type = isDir ? '文件夹' : '文件';
   if (!confirm(`确定删除 ${type}「${name}」？`)) return;
   try {
-    const resp = await fetch(`${API_ROOT}/api/delete`, {
+    const resp = await authFetch(API_ROOT + '/api/delete', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ path: currentDir + '/' + name })
     });
@@ -866,7 +866,7 @@ async function renameItem(oldName, isDir) {
   const newName = prompt(`重命名「${oldName}」为：`, oldName);
   if (!newName || newName === oldName) return;
   try {
-    const resp = await fetch(`${API_ROOT}/api/rename`, {
+    const resp = await authFetch(API_ROOT + '/api/rename', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ oldPath: currentDir + '/' + oldName, newPath: currentDir + '/' + newName })
     });
