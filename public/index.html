@@ -673,8 +673,9 @@ function downloadFile(name) {
   dlFill.style.width = '0%';
   dlText.textContent = '0%';
   var xhr = new XMLHttpRequest();
-  xhr.open('GET', API_ROOT + '/api/download?path=' + encodeURIComponent(fullPath), true);
-  xhr.responseType = 'blob';
+    xhr.open('GET', API_ROOT + '/api/download?path=' + encodeURIComponent(fullPath), true);
+    xhr.setRequestHeader('x-fm-token', fmToken);
+    xhr.responseType = 'blob';
   xhr.onprogress = function(e) {
     if (e.lengthComputable) {
       var pct = Math.round((e.loaded / e.total) * 100);
@@ -724,7 +725,8 @@ function downloadCurrentDir() {
   dlText.textContent = '0%';
   var xhr = new XMLHttpRequest();
   xhr.open('GET', API_ROOT + '/api/download?path=' + encodeURIComponent(currentDir), true);
-  xhr.responseType = 'blob';
+    xhr.setRequestHeader('x-fm-token', fmToken);
+    xhr.responseType = 'blob';
   xhr.onprogress = function(e) {
     if (e.lengthComputable) {
       var pct = Math.round((e.loaded / e.total) * 100);
@@ -793,6 +795,7 @@ function uploadFiles(files) {
     formData.append('path', relPath);
     var xhr = new XMLHttpRequest();
     xhr.open('POST', API_ROOT + '/api/upload', true);
+    xhr.setRequestHeader('x-fm-token', fmToken);
     xhr.upload.onprogress = function(e) {
       if (e.lengthComputable) {
         var pct = Math.round(((loaded + e.loaded) / total) * 100);
