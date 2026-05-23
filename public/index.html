@@ -196,6 +196,9 @@
   .btn-group .btn:first-child { border-radius: 6px 0 0 6px; }
   .btn-group .btn:last-child { border-radius: 0 6px 6px 0; border-left: none; }
 
+  /* 多选框 */
+  .sel-cb { width: 20px; text-align: center; flex-shrink: 0; font-size: 14px; margin-right: 4px; }
+
   /* 编辑器 */
   .editor-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,0.7);
@@ -262,6 +265,7 @@
     <input type="file" id="uploadDirInput" style="display:none" webkitdirectory multiple onchange="uploadFiles(this.files)">
     <button class="btn" onclick="downloadCurrentDir()">⬇ 下载此目录</button>
     <button class="btn" id="selectBtn" onclick="toggleSelectMode()">☐ 选择</button>
+    <button class="btn" id="selectAllBtn" onclick="selectAll()" style="display:none">☑ 全选</button>
   </div>
 
   <!-- 上传进度 -->
@@ -555,13 +559,29 @@ document.getElementById('fileArea').addEventListener('contextmenu', e => {
 function toggleSelectMode() {
   isSelecting = !isSelecting;
   const btn = document.getElementById('selectBtn');
+  const allBtn = document.getElementById('selectAllBtn');
   if (isSelecting) {
     btn.textContent = '☑ 完成选择';
+    allBtn.style.display = '';
     selectedPaths.clear();
   } else {
     btn.textContent = '☐ 选择';
+    allBtn.style.display = 'none';
     clearSelection();
   }
+  renderFiles();
+}
+
+function selectAll() {
+  const filter = document.getElementById('searchInput').value.toLowerCase();
+  const items = filter ? allEntries.filter(e => e.name.toLowerCase().includes(filter)) : allEntries;
+  const allSelected = items.every(e => selectedPaths.has(e.name));
+  if (allSelected) {
+    items.forEach(e => selectedPaths.delete(e.name));
+  } else {
+    items.forEach(e => selectedPaths.add(e.name));
+  }
+  updateSelectionUI();
   renderFiles();
 }
 
