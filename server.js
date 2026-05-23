@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { ZipArchive } = require('archiver');
+const archiver = require('archiver');
 const { execSync } = require('child_process');
 
 const app = express();
@@ -156,7 +156,7 @@ app.get('/api/download-batch', (req, res) => {
     for (const p of paths) {
       if (!isPathAllowed(path.resolve(p))) return res.status(403).json({ error: '禁止访问' });
     }
-    const archive = new ZipArchive({ zlib: { level: 5 } });
+    const archive = archiver('zip', { zlib: { level: 5 } });
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="selected.zip"`);
     archive.pipe(res);
@@ -245,11 +245,13 @@ app.get('/api/download', (req, res) => {
     const stat = fs.statSync(filePath);
     if (stat.isDirectory()) {
       // 目录 -> 打包下载
-      const archive = new ZipArchive({ zlib: { level: 5 } });
+      const archive = archiver('zip', { zlib: { level: 5 } });
       res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filePath)}.zip"`);
+      const baseName = path.basename(filePath);
+      const encName = encodeURIComponent(baseName);
+      res.setHeader('Content-Disposition', `attachment; filename="${encName}.zip"`);
       archive.pipe(res);
-      archive.directory(filePath, path.basename(filePath));
+      archive.directory(filePath, baseName);
       archive.finalize();
     } else {
       // 单个文件
