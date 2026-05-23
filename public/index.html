@@ -639,7 +639,9 @@ async function pasteFromClipboard() {
     clipboard = null;
     updateClipboardUI();
     refresh();
-  } catch (e) { toast('粘贴失败: ' + e.message, true); }
+  }
+  // Clear file input so same file can be re-uploaded
+ catch (e) { toast('粘贴失败: ' + e.message, true); }
 }
 
 function downloadSelected() {
@@ -783,6 +785,8 @@ function uploadFiles(files) {
       text.textContent = '0%';
       nameEl.textContent = '';
       toast('✅ 上传完成 (' + files.length + ' 个文件)');
+      document.getElementById('uploadFileInput').value = '';
+      document.getElementById('uploadDirInput').value = '';
       refresh();
       return;
     }
