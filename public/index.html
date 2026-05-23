@@ -385,17 +385,20 @@ let clipboard = null; // { action: 'copy'|'cut', paths: [...], names: [...] }
 setTimeout(function(){ loadDir(currentDir); }, 100);
 
 // ─── 目录导航 ───
+
+var fmToken = null;
+
+function authFetch(url, opts) {
+  opts = opts || {};
+  opts.headers = opts.headers || {};
+  opts.headers["x-fm-token"] = fmToken;
+  if (opts.method === "GET" && url.indexOf("?") > 0) url += "&fm_token=" + encodeURIComponent(fmToken);
+  return fetch(url, opts);
+}
 async function loadDir(dir) {
   currentDir = dir;
   document.getElementById('pathInput').value = dir;
   try {
-function authFetch(url, opts) {
-  opts = opts || {};
-  opts.headers = opts.headers || {};
-  opts.headers['x-fm-token'] = fmToken;
-  if (opts.method === 'GET' && url.indexOf('?') > 0) url += '&fm_token=' + encodeURIComponent(fmToken);
-  return fetch(url, opts);
-}
     const resp = await authFetch(API_ROOT + '/api/list?dir=' + encodeURIComponent(dir));
     const data = await resp.json();
     if (data.error) { toast(data.error, true); return; }
