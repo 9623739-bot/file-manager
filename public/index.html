@@ -261,6 +261,7 @@
     <button class="btn" onclick="document.getElementById('uploadDirInput').click()">📁 上传文件夹</button>
     <input type="file" id="uploadDirInput" style="display:none" webkitdirectory multiple onchange="uploadFiles(this.files)">
     <button class="btn" onclick="downloadCurrentDir()">⬇ 下载此目录</button>
+    <button class="btn" id="selectBtn" onclick="toggleSelectMode()">☐ 选择</button>
   </div>
 
   <!-- 上传进度 -->
@@ -293,7 +294,7 @@
   <!-- 文件列表 -->
   <div class="file-area" id="fileArea">
     <div class="file-header">
-      <span class="col-name">名称</span>
+      <span class="col-name" style="padding-left:4px">名称</span>
       <span class="col-size">大小</span>
       <span class="col-date">修改时间</span>
     </div>
@@ -458,8 +459,9 @@ function renderFiles() {
     const sizeStr = e.isDir ? '—' : formatSize(e.size);
     const dateStr = new Date(e.mtime).toLocaleString('zh-CN');
     const sel = selectedPaths.has(e.name) ? 'selected' : '';
+    const selIcon = isSelecting ? (selectedPaths.has(e.name) ? '☑' : '☐') : '';
     return `<div class="file-item ${sel}" data-name="${escapeHtml(e.name)}" data-isdir="${e.isDir}" onclick="handleClick(event, '${escapeHtml(e.name)}', ${e.isDir})" oncontextmenu="handleContext(event, '${escapeHtml(e.name)}', ${e.isDir})">
-      <span class="icon">${icon}</span>
+      <span class="icon">${(isSelecting ? selIcon + ' ' : '') + icon}</span>
       <span class="col-name">${escapeHtml(e.name)}</span>
       <span class="col-size">${sizeStr}</span>
       <span class="col-date">${dateStr}</span>
@@ -548,6 +550,20 @@ document.getElementById('fileArea').addEventListener('contextmenu', e => {
   `;
   document.body.appendChild(menu);
 });
+
+// ─── 多选模式 ───
+function toggleSelectMode() {
+  isSelecting = !isSelecting;
+  const btn = document.getElementById('selectBtn');
+  if (isSelecting) {
+    btn.textContent = '☑ 完成选择';
+    selectedPaths.clear();
+  } else {
+    btn.textContent = '☐ 选择';
+    clearSelection();
+  }
+  renderFiles();
+}
 
 // ─── 选择模式 ───
 function toggleSelection(name) {
